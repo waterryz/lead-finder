@@ -1,0 +1,25 @@
+services:
+  dashboard:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DB_PATH: /data/companies.db
+    env_file: .env
+    volumes:
+      - leadsdata:/data
+    restart: unless-stopped
+
+  # Optional: the Telegram bot, sharing the SAME SQLite volume.
+  bot:
+    build: .
+    command: python bot.py
+    environment:
+      DB_PATH: /data/companies.db
+    env_file: .env
+    volumes:
+      - leadsdata:/data
+    restart: unless-stopped
+
+volumes:
+  leadsdata:

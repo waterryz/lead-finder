@@ -1,0 +1,13 @@
+python-telegram-bot==21.6
+aiohttp==3.10.11
+beautifulsoup4==4.12.3
+lxml==5.3.0
+openpyxl==3.1.5
+python-dotenv==1.0.1
+fake-useragent==1.5.1
+openai>=1.60.0
+dnspython==2.7.0
+phonenumbers==8.13.48
+playwright==1.48.0
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
