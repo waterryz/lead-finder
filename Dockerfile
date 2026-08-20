@@ -1,11 +1,11 @@
-FROM python:3.12-slim
+# Official Playwright image: chromium + all system deps preinstalled (matches playwright==1.48.0).
+# Avoids the apt/font-package failures of installing Playwright deps on Debian trixie.
+FROM mcr.microsoft.com/playwright/python:v1.48.0-jammy
 
 WORKDIR /app
 
-# System deps for lxml / Playwright are pulled in by `playwright install --with-deps`.
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt \
-    && playwright install --with-deps chromium
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
