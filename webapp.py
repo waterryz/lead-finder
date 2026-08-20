@@ -42,33 +42,60 @@ def _is_target(res: dict) -> bool:
     )
 
 
+def _log(job, line: str):
+    lg = job.setdefault("log", [])
+    lg.append(line)
+    if len(lg) > 400:
+        del lg[:len(lg) - 400]
+
+
 async def _enrich_pool(job, query, pool, stop_at, agg):
+    _log(job, f"$ search :: {query}")
     urls = await search_google(query, num_results=pool)
     pending = [it for it in urls if not domain_exists(it["domain"])]
     agg["dup"] += len(urls) - len(pending)
+    _log(job, f"> found {len(urls)} sites — {len(pending)} new, {len(urls) - len(pending)} in base")
 
-    for i in range(0, len(pending), CONCURRENCY):
+    total = len(pending)
+    idx = 0
+    for i in range(0, total, CONCURRENCY):
         if job.get("cancel"):
+            _log(job, "! cancelled")
             break
         batch = pending[i:i + CONCURRENCY]
         results = await asyncio.gather(
             *[enrich_one(query, it) for it in batch], return_exceptions=True
         )
         for item, res in zip(batch, results):
+            idx += 1
             agg["done"] += 1
+            dom = item["domain"]
+            tag = f"[{idx}/{total}] {dom}"
             if isinstance(res, Exception) or not res:
                 agg["errors"] += 1
+                _log(job, f"{tag} :: error")
                 continue
             skip = res.get("_skip")
             if skip == "landing":
                 agg["landing"] += 1
+                _log(job, f"{tag} :: no backend — skip")
             elif skip == "no_auth":
                 agg["no_auth"] += 1
-            elif not skip and _is_target(res):
+                _log(job, f"{tag} :: no auth surface — skip")
+            elif skip:
+                agg["errors"] += 1
+                _log(job, f"{tag} :: {skip} — skip")
+            elif _is_target(res):
                 agg["good"] += 1
-                agg["found"].append(item["domain"])
-        job["progress"].update(agg, pending=len(pending))
+                agg["found"].append(dom)
+                bb = "yes" if res.get("has_bb") else "no"
+                _log(job, f"{tag} :: surface={res.get('surface_score',0)} "
+                          f"pay={res.get('payout_score',0)} bb={bb} -> TARGET")
+            else:
+                _log(job, f"{tag} :: surface={res.get('surface_score',0)} weak — skip")
+        job["progress"].update(agg, pending=total)
         if stop_at and agg["good"] >= stop_at:
+            _log(job, f"> target reached: {agg['good']} leads")
             break
 
 
@@ -78,10 +105,12 @@ async def run_search(job, query, pool, stop_at):
     try:
         await _enrich_pool(job, query, pool, stop_at, agg)
         job["progress"].update(agg)
+        _log(job, f"> done :: targets={agg['good']} processed={agg['done']}")
         job["status"] = "done"
     except Exception as e:
         job["status"] = "error"
         job["error"] = str(e)[:300]
+        _log(job, f"! fatal: {str(e)[:120]}")
     finally:
         job["done"] = True
 
@@ -91,19 +120,24 @@ async def run_superscan(job):
                        "query": "", "good": 0, "done": 0, "landing": 0, "no_auth": 0,
                        "dup": 0, "errors": 0, "found": []}
     try:
+        _log(job, f"$ super_scan :: generating {SUPER_QUERIES} niches...")
         ideas = await generate_ideas(SUPER_QUERIES)
         job["progress"]["niche_total"] = len(ideas)
+        _log(job, f"> {len(ideas)} niches ready")
         agg = {"good": 0, "done": 0, "landing": 0, "no_auth": 0, "dup": 0, "errors": 0, "found": []}
         for qi, idea in enumerate(ideas, 1):
             if job.get("cancel"):
                 break
             job["progress"].update(niche=qi, query=idea, **agg)
+            _log(job, f"== niche {qi}/{len(ideas)} ==")
             await _enrich_pool(job, idea, SUPER_POOL_PER_QUERY, None, agg)
         job["progress"].update(agg)
+        _log(job, f"> super_scan done :: targets={agg['good']} processed={agg['done']}")
         job["status"] = "done"
     except Exception as e:
         job["status"] = "error"
         job["error"] = str(e)[:300]
+        _log(job, f"! fatal: {str(e)[:120]}")
     finally:
         job["done"] = True
 
@@ -177,7 +211,8 @@ async def api_job(jid: str):
     if not job:
         return JSONResponse({"error": "not found"}, status_code=404)
     return {"id": job["id"], "kind": job["kind"], "status": job["status"],
-            "done": job["done"], "progress": job["progress"], "error": job.get("error")}
+            "done": job["done"], "progress": job["progress"], "error": job.get("error"),
+            "log": job.get("log", [])[-90:]}
 
 
 @app.post("/api/job/{jid}/cancel")
