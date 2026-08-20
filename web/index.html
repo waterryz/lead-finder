@@ -91,6 +91,10 @@ td .name{font-weight:600} td .dom{color:var(--muted);font-size:12px;font-family:
 .pitch{background:var(--bg);border:1px solid var(--line);border-left:2px solid var(--accent2);border-radius:2px;padding:12px;margin-top:12px;white-space:pre-wrap;font-size:13px}
 .close{position:absolute;top:16px;right:16px;background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer}
 .copy{margin-top:8px}
+.pitch-actions{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.pitch-actions .copy{margin-top:0}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:disabled:hover{border-color:var(--line2);background:var(--panel2)}
 .tag{display:inline-block;background:var(--chip);border:1px solid var(--line2);border-radius:2px;padding:2px 7px;margin:2px 3px 2px 0;font-size:11px;font-family:var(--mono)}
 .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:2px}
 .tablewrap table{border:none}
@@ -264,6 +268,7 @@ function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,m=>({'&':'&amp;'
 async function openDrawer(dom){
   const c=await (await fetch('/api/company/'+encodeURIComponent(dom))).json();
   const ct=c.contacts||{}, ch=c.channels||{};
+  const primaryEmail=(ct.primary_email||(ct.emails||[])[0]||'');
   const dms=(c.decision_makers||[]).map(d=>`${esc(d.name)}${d.role?' ('+esc(d.role)+')':''}${d.contact?' — '+esc(d.contact):''}`).join('<br>')||'—';
   const surf=(c.attack_surface||[]).map(x=>`<span class="tag">${esc(x)}</span>`).join('')||'—';
   const stack=(c.stack||[]).map(x=>`<span class="tag">${esc(x)}</span>`).join('')||'—';
@@ -289,12 +294,23 @@ async function openDrawer(dom){
     ${row('Что проверить',esc(c.needs||'—'))}
     <div style="margin-top:14px;color:var(--muted);font-size:12px">// питч для холодного оффера</div>
     <div class="pitch" id="pitchtext">${esc(c.pitch||'—')}</div>
-    <button class="copy" onclick="copyPitch()"><svg class="ic"><use href="#i-copy"/></svg>копировать</button>
+    <div class="pitch-actions">
+      <button class="copy" onclick="copyPitch()"><svg class="ic"><use href="#i-copy"/></svg>копировать</button>
+      ${primaryEmail
+        ? `<button class="copy" onclick="sendEmail('${esc(primaryEmail)}','${esc(c.domain)}')"><svg class="ic"><use href="#i-mail"/></svg>отправить email</button>`
+        : `<button class="copy" disabled title="email не найден"><svg class="ic"><use href="#i-mail"/></svg>нет email</button>`}
+    </div>
   `;
   document.getElementById('overlay').classList.add('show');
   document.getElementById('drawer').classList.add('show');
 }
 function copyPitch(){navigator.clipboard.writeText(document.getElementById('pitchtext').innerText);}
+function sendEmail(email,domain){
+  const body=document.getElementById('pitchtext').innerText;
+  const subject='Аудит безопасности '+domain;
+  window.location.href='mailto:'+encodeURIComponent(email)
+    +'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+}
 function closeDrawer(){document.getElementById('overlay').classList.remove('show');document.getElementById('drawer').classList.remove('show');}
 
 function setFilter(el){document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));el.classList.add('active');FILTER=el.dataset.f;loadCompanies();}
