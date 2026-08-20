@@ -64,6 +64,9 @@ table{width:100%;border-collapse:collapse;background:var(--panel);border:1px sol
 th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line);font-size:13px}
 th{color:var(--muted);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.6px;cursor:pointer;
   white-space:nowrap;background:var(--panel2);border-bottom:1px solid var(--line2)}
+th[data-col]:hover{color:var(--text)}
+th.sorted{color:var(--accent2)}
+.arr{color:var(--accent2);font-size:11px;font-weight:700}
 tbody tr{cursor:pointer} tbody tr:hover{background:var(--panel2)}
 tbody tr:last-child td{border-bottom:none}
 td .name{font-weight:600} td .dom{color:var(--muted);font-size:12px;font-family:var(--mono)}
@@ -183,7 +186,7 @@ h1 .ic{width:16px;height:16px;color:var(--accent)}
     <div class="chip" data-f="hot" onclick="setFilter(this)"><svg class="ic"><use href="#i-flame"/></svg>горячие</div>
     <div class="chip" data-f="email" onclick="setFilter(this)"><svg class="ic"><use href="#i-mail"/></svg>email</div>
     <div class="spacer"></div>
-    <select id="sort" onchange="loadCompanies()">
+    <select id="sort" onchange="SORT=this.value;ORDER='desc';loadCompanies()">
       <option value="surface_score">sort: поверхность</option>
       <option value="payout_score">sort: платёжеспособность</option>
       <option value="quality_score">sort: пентест-лид</option>
@@ -195,12 +198,12 @@ h1 .ic{width:16px;height:16px;color:var(--accent)}
   <div class="tablewrap">
   <table>
     <thead><tr>
-      <th onclick="sortBy('name')">Компания</th>
-      <th onclick="sortBy('surface_score')">Поверхность</th>
-      <th onclick="sortBy('payout_score')">Платёж</th>
+      <th data-col="name" onclick="sortBy('name')">Компания <span class="arr"></span></th>
+      <th data-col="surface_score" onclick="sortBy('surface_score')">Поверхность <span class="arr"></span></th>
+      <th data-col="payout_score" onclick="sortBy('payout_score')">Платёж <span class="arr"></span></th>
       <th>Bug bounty</th>
       <th>Данные</th>
-      <th onclick="sortBy('quality_score')">Лид</th>
+      <th data-col="quality_score" onclick="sortBy('quality_score')">Лид <span class="arr"></span></th>
     </tr></thead>
     <tbody id="rows"><tr><td class="empty" colspan="6">// база пуста — запусти поиск</td></tr></tbody>
   </table>
@@ -233,9 +236,16 @@ function bbB(c){if(c.has_bb){const p=(c.bb_platforms||[]).join(', ')||'да';ret
 function sensB(v){const c=v==='high'?'b-red':v==='medium'?'b-yellow':'b-gray';const t=v==='high'?'высокая':v==='medium'?'средняя':v==='low'?'низкая':'—';return `<span class="badge ${c}">${t}</span>`;}
 function leadB(s){s=s||0;const c=s>=7?'b-green':s>=4?'b-yellow':'b-gray';return `<span class="badge ${c}">${s}/10</span>`;}
 
+function updateArrows(){
+  document.querySelectorAll('th[data-col]').forEach(th=>{
+    const a=th.querySelector('.arr');
+    if(th.dataset.col===SORT){a.textContent=ORDER==='desc'?'↓':'↑';th.classList.add('sorted');}
+    else{a.textContent='';th.classList.remove('sorted');}
+  });
+}
 async function loadCompanies(){
-  SORT=document.getElementById('sort').value;
   const p=new URLSearchParams({sort:SORT,order:ORDER}); if(FILTER)p.set(FILTER,1);
+  updateArrows();
   const d=await (await fetch('/api/companies?'+p)).json();
   const tb=document.getElementById('rows');
   if(!d.items.length){tb.innerHTML='<tr><td class="empty" colspan="6">// пусто под этим фильтром</td></tr>';return;}
@@ -288,7 +298,12 @@ function copyPitch(){navigator.clipboard.writeText(document.getElementById('pitc
 function closeDrawer(){document.getElementById('overlay').classList.remove('show');document.getElementById('drawer').classList.remove('show');}
 
 function setFilter(el){document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));el.classList.add('active');FILTER=el.dataset.f;loadCompanies();}
-function sortBy(col){if(SORT===col)ORDER=(ORDER==='desc'?'asc':'desc');else{SORT=col;ORDER='desc';}document.getElementById('sort').value=['surface_score','payout_score','quality_score','hotness_score'].includes(col)?col:document.getElementById('sort').value;loadCompanies();}
+function sortBy(col){
+  if(SORT===col)ORDER=(ORDER==='desc'?'asc':'desc');else{SORT=col;ORDER='desc';}
+  const sel=document.getElementById('sort');
+  if([...sel.options].some(o=>o.value===col))sel.value=col;
+  loadCompanies();
+}
 function doExport(){const p=new URLSearchParams();if(FILTER)p.set(FILTER,1);window.location='/api/export?'+p;}
 
 async function loadIdeas(){
