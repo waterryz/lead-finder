@@ -503,23 +503,42 @@ def build_card(company: dict, backend_label: str) -> str:
     )
 
 
-async def enrich_one(query: str, item: dict) -> dict | None:
-    """Full enrichment for one company URL. Returns saved company dict or None if skipped."""
+async def enrich_one(query: str, item: dict, on_step=None) -> dict | None:
+    """Full enrichment for one company URL. Returns saved company dict or None if skipped.
+
+    on_step(msg): optional callback fired at each stage for a live activity log.
+    """
+    dom = item["domain"]
+
+    def step(msg):
+        if on_step:
+            try:
+                on_step(f"  · {dom} {msg}")
+            except Exception:
+                pass
+
+    step("→ probe backend")
     backend = await detect_backend(item["url"])
     if not backend["has_backend"]:
+        step("✗ no backend")
         return {"_skip": "landing"}
+    step(f"backend={backend.get('backend_type') or '?'} → fetch page")
 
     site_data = await scrape_site(item["url"])
     if site_data.get("error"):
+        step("✗ fetch error")
         return {"_skip": "error"}
+    step(f"got {len(site_data.get('text',''))} chars → check auth")
 
     site_data = await enrich_with_js(site_data)
 
     # --- Pentest focus: gate on real auth/attack surface ---
     auth = await detect_auth_surface(item["url"], site_data)
     if AUTH_REQUIRED and not auth["has_auth"]:
+        step("✗ no auth surface")
         return {"_skip": "no_auth"}
     site_data["auth_labels"] = auth["labels"]
+    step(f"surface={auth.get('score',0)} [{','.join(auth.get('labels',[])[:3])}] → stack/bb")
 
     # Independent steps run concurrently (incl. bug-bounty check for passed sites)
     stack_info, hot, contacts_extra, bb = await asyncio.gather(
@@ -528,6 +547,8 @@ async def enrich_one(query: str, item: dict) -> dict | None:
         scrape_contacts_page(item["url"]),
         check_bug_bounty(item["url"], site_data),
     )
+    step(f"stack={len(stack_info.get('flat',[]))} "
+         f"bb={'yes' if bb.get('has_bb') else 'no'} hot={hot.get('score',0)} → AI")
 
     emails = _dedup(site_data.get("emails", []) + contacts_extra.get("emails", []))
     phones = _dedup(site_data.get("phones", []) + contacts_extra.get("phones", []))
@@ -543,7 +564,10 @@ async def enrich_one(query: str, item: dict) -> dict | None:
         analyze_company(site_data),
     )
     if "error" in ai:
+        step("✗ ai error")
         return {"_skip": "ai_error"}
+    step(f"ai: {(ai.get('name') or dom)[:22]} pentest={ai.get('pentest_score',0)} "
+         f"pay={ai.get('payout_score',0)} → pitch")
 
     backend_label = stack_info.get("backend_hint") or backend.get("backend_type") or "unknown"
 
@@ -589,6 +613,7 @@ async def enrich_one(query: str, item: dict) -> dict | None:
     company["_saved"] = save_company(company)
     company["_backend_label"] = backend_label
     company["_is_hot"] = hot.get("is_hot", False)
+    step(f"✓ saved [{company['_saved']}]")
     return company
 
 

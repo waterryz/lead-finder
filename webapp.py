@@ -63,8 +63,9 @@ async def _enrich_pool(job, query, pool, stop_at, agg):
             _log(job, "! cancelled")
             break
         batch = pending[i:i + CONCURRENCY]
+        step_cb = lambda m: _log(job, m)
         results = await asyncio.gather(
-            *[enrich_one(query, it) for it in batch], return_exceptions=True
+            *[enrich_one(query, it, on_step=step_cb) for it in batch], return_exceptions=True
         )
         for item, res in zip(batch, results):
             idx += 1
