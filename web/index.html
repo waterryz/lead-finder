@@ -297,7 +297,7 @@ async function loadIdeas(){
   box.innerHTML=(d.ideas||[]).map(i=>`<span class="idea" onclick="pick('${esc(i).replace(/'/g,"\\'")}')"><svg class="ic"><use href="#i-search"/></svg>${esc(i)}</span>`).join('')
     +' <span class="idea" onclick="loadIdeas()"><svg class="ic"><use href="#i-zap"/></svg>ещё</span>';
 }
-function pick(q){document.getElementById('q').value=q;runSearch(false);}
+function pick(q){const el=document.getElementById('q');el.value=q;el.focus();}
 
 async function runSearch(deep){
   const q=document.getElementById('q').value.trim(); if(!q)return;
