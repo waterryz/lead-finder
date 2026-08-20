@@ -9,10 +9,10 @@ RUN pip install --no-cache-dir -r requirements.txt \
 
 COPY . .
 
-# Persist the SQLite DB on a mounted volume in production (Railway: add a Volume at /data).
+# Persist the SQLite DB on a mounted volume in production.
+# On Railway: add a Volume with mount path /data (do NOT use the Docker VOLUME instruction — Railway rejects it).
 ENV DB_PATH=/data/companies.db
 ENV PORT=8000
-VOLUME ["/data"]
 
 EXPOSE 8000
 # Runs the web dashboard; set RUN_BOT=1 to also launch the Telegram bot in the same container.
