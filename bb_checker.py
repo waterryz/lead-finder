@@ -41,7 +41,23 @@ BB_KEYWORDS = [
     "раскрытие уязвимост", "вознаграждение за уязвимост", "сообщить об уязвимост",
 ]
 
+# Strong phrases that a REAL disclosure/BB page has — but a soft-404 that merely
+# echoes the requested path (e.g. "/bugbounty") does not. Used to validate policy pages.
+STRONG_KEYWORDS = [
+    "responsible disclosure", "vulnerability disclosure", "vulnerability reward",
+    "security researcher", "report a vulnerability", "security.txt",
+    "программа поиска уязвимостей", "ответственное раскрытие", "раскрытие уязвимост",
+    "вознаграждение за уязвимост", "сообщить об уязвимост", "программа багбаунти",
+]
+
 _SECTXT_MARKERS = ("contact:", "policy:", "expires:", "encryption:", "acknowledgments:")
+
+# Markers of an error/"soft 404" page (returns HTTP 200 but is really not-found).
+_404_MARKERS = (
+    "ошибка 404", "error 404", "404 not found", "page not found", "not found",
+    "страница не найдена", "страница не существует", "не найдена", "не существует",
+    "попали не туда", "больше нет или никогда", "ничего не найдено", "такой страницы",
+)
 
 
 def _find_platforms(corpus: str) -> list[str]:
@@ -55,6 +71,22 @@ def _find_platforms(corpus: str) -> list[str]:
 def _has_keyword(corpus: str) -> bool:
     low = corpus.lower()
     return any(k in low for k in BB_KEYWORDS)
+
+
+def _has_strong(body: str) -> bool:
+    low = body.lower()
+    return any(k in low for k in STRONG_KEYWORDS)
+
+
+def _looks_404(body: str) -> bool:
+    low = body.lower()
+    return any(m in low for m in _404_MARKERS)
+
+
+def _is_plaintext_sectxt(body: str) -> bool:
+    """A real security.txt is text/plain, not an HTML page."""
+    low = body.lower()
+    return "<html" not in low and "<!doctype" not in low and "<body" not in low
 
 
 async def _get(session, url):
@@ -107,7 +139,9 @@ async def check_bug_bounty(url: str, site_data: dict) -> dict:
         organic = gathered[2] if do_search and len(gathered) > 2 else []
 
         for u, status, body in sectxt_res:
-            if status == 200 and any(m in body.lower() for m in _SECTXT_MARKERS):
+            # A real security.txt is plain text with the RFC fields — not an HTML/404 page.
+            if (status == 200 and any(m in body.lower() for m in _SECTXT_MARKERS)
+                    and _is_plaintext_sectxt(body) and not _looks_404(body)):
                 result["security_txt"] = True
                 result["signals"].append("security.txt")
                 corpus += "\n" + body
@@ -118,7 +152,13 @@ async def check_bug_bounty(url: str, site_data: dict) -> dict:
                     result["policy_url"] = u  # fallback: link to the security.txt itself
 
         for u, status, body in path_res:
-            if status == 200 and _has_keyword(body):
+            if status != 200 or _looks_404(body):
+                continue
+            # Strip the requested path from the body so a soft-404 that merely echoes
+            # "/bugbounty" doesn't match the "bugbounty" keyword — real pages keep other wording.
+            token = urlparse(u).path.strip("/").lower()
+            stripped = body.lower().replace(token, " ").replace(token.replace("-", ""), " ")
+            if _has_keyword(stripped):
                 result["signals"].append(f"policy-page:{urlparse(u).path}")
                 corpus += "\n" + body
                 if not result["policy_url"]:
