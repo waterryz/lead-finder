@@ -54,6 +54,12 @@ button.ghost{background:transparent;border-color:var(--line)}
 .log .l-head{color:var(--violet)}
 .log .caret{color:var(--accent);animation:blink 1.1s steps(1) infinite}
 .log .spin{color:var(--accent);font-weight:700;display:inline-block;width:1ch;text-align:center}
+.folderbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.pick{display:inline-flex;align-items:center;gap:6px;color:var(--muted);background:var(--panel);
+  border:1px solid var(--line);border-radius:2px;padding:5px 9px}
+.pick .ic{color:var(--muted)}
+.pick select{background:transparent;border:none;color:var(--text);font-size:12px;font-family:var(--mono);outline:none;cursor:pointer;max-width:280px}
+.pick select option{background:var(--panel2);color:var(--text)}
 .filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
 .chip{background:var(--chip);border:1px solid var(--line);border-radius:2px;padding:6px 12px;font-size:12px;cursor:pointer;user-select:none}
 .chip:hover{border-color:var(--line2)}
@@ -156,6 +162,8 @@ h1 .ic{width:16px;height:16px;color:var(--accent)}
 <symbol id="i-list" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></symbol>
 <symbol id="i-x" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
 <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
+<symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></symbol>
 </defs></svg>
 <div class="wrap">
   <header>
@@ -179,6 +187,20 @@ h1 .ic{width:16px;height:16px;color:var(--accent)}
       <div class="ptext"><span id="ptext">…</span><button class="ghost" style="padding:2px 8px" onclick="cancelJob()">стоп</button></div>
       <div class="log" id="log"></div>
     </div>
+  </div>
+
+  <div class="folderbar">
+    <label class="pick"><svg class="ic"><use href="#i-folder"/></svg>
+      <select id="folder" onchange="FOLDER=this.value;loadCompanies()"><option value="">все папки</option></select>
+    </label>
+    <label class="pick"><svg class="ic"><use href="#i-calendar"/></svg>
+      <select id="date" onchange="DAYS=+this.value;loadCompanies()">
+        <option value="0">всё время</option>
+        <option value="1">сутки</option>
+        <option value="7">7 дней</option>
+        <option value="30">30 дней</option>
+      </select>
+    </label>
   </div>
 
   <div class="filters" id="filters">
@@ -218,7 +240,15 @@ h1 .ic{width:16px;height:16px;color:var(--accent)}
 <div class="drawer" id="drawer"></div>
 
 <script>
-let FILTER="", SORT="surface_score", ORDER="desc", JOB=null, TIMER=null;
+let FILTER="", SORT="surface_score", ORDER="desc", JOB=null, TIMER=null, FOLDER="", DAYS=0;
+async function loadFolders(){
+  const d=await (await fetch('/api/queries')).json();
+  const sel=document.getElementById('folder');
+  const cur=FOLDER;
+  sel.innerHTML='<option value="">все папки</option>'+(d.folders||[])
+    .map(f=>`<option value="${esc(f.query)}">${esc(f.query)} (${f.count})</option>`).join('');
+  sel.value=cur;
+}
 let SPIN=0, SPINT=null; const SPINNER=['\\','|','/','-'];
 function startSpin(){stopSpin();SPINT=setInterval(()=>{SPIN=(SPIN+1)%SPINNER.length;const s=document.getElementById('spin');if(s)s.textContent=SPINNER[SPIN];},120);}
 function stopSpin(){if(SPINT)clearInterval(SPINT);SPINT=null;}
@@ -249,6 +279,7 @@ function updateArrows(){
 }
 async function loadCompanies(){
   const p=new URLSearchParams({sort:SORT,order:ORDER}); if(FILTER)p.set(FILTER,1);
+  if(FOLDER)p.set('q',FOLDER); if(DAYS)p.set('days',DAYS);
   updateArrows();
   const d=await (await fetch('/api/companies?'+p)).json();
   const tb=document.getElementById('rows');
@@ -320,7 +351,7 @@ function sortBy(col){
   if([...sel.options].some(o=>o.value===col))sel.value=col;
   loadCompanies();
 }
-function doExport(){const p=new URLSearchParams();if(FILTER)p.set(FILTER,1);window.location='/api/export?'+p;}
+function doExport(){const p=new URLSearchParams();if(FILTER)p.set(FILTER,1);if(FOLDER)p.set('q',FOLDER);if(DAYS)p.set('days',DAYS);window.location='/api/export?'+p;}
 
 async function loadIdeas(){
   const box=document.getElementById('ideas');box.innerHTML='<span style="color:var(--muted);font-size:12px">генерирую…</span>';
@@ -372,10 +403,10 @@ async function pollJob(){
   document.getElementById('fill').style.width=(j.done?100:pct)+'%';
   document.getElementById('ptext').innerText=j.done?('done :: targets='+(p.good||0)):txt;
   renderLog(j.log||[],j.done);
-  if(j.done){clearInterval(TIMER);stopSpin();JOB=null;loadCompanies();loadDashboard();}
+  if(j.done){clearInterval(TIMER);stopSpin();JOB=null;loadCompanies();loadDashboard();loadFolders();}
 }
 
-loadDashboard();loadCompanies();
+loadDashboard();loadFolders();loadCompanies();
 </script>
 </body>
 </html>

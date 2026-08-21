@@ -231,7 +231,7 @@ def get_companies_filtered(query: str | None = None, min_quality: int = 0,
                            has_telegram: bool = False, crm_status: str | None = None,
                            require_auth: bool = False, min_surface: int = 0,
                            require_bb: bool = False, exclude_bb: bool = False,
-                           min_payout: int = 0) -> list[dict]:
+                           min_payout: int = 0, days: int = 0) -> list[dict]:
     """Return companies matching export filters."""
     conn = _connect()
     conn.row_factory = sqlite3.Row
@@ -258,6 +258,9 @@ def get_companies_filtered(query: str | None = None, min_quality: int = 0,
         sql += " AND has_bb = 1"
     if exclude_bb:
         sql += " AND (has_bb = 0 OR has_bb IS NULL)"
+    if days:
+        sql += " AND created_at >= datetime('now', ?)"
+        params.append(f"-{int(days)} days")
     if crm_status:
         sql += " AND crm_status = ?"
         params.append(crm_status)
@@ -285,6 +288,19 @@ def set_crm_status(domain: str, status: str) -> bool:
     conn.commit()
     conn.close()
     return changed
+
+
+def get_queries() -> list[dict]:
+    """Distinct search queries (folders) with counts and last-seen time."""
+    conn = _connect()
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("""
+        SELECT query, COUNT(*) c, MAX(created_at) last
+        FROM companies WHERE query IS NOT NULL AND query != ''
+        GROUP BY query ORDER BY last DESC
+    """).fetchall()
+    conn.close()
+    return [{"query": r["query"], "count": r["c"], "last": r["last"]} for r in rows]
 
 
 def get_by_crm_status(status: str) -> list[dict]:

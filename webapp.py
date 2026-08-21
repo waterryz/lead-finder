@@ -12,6 +12,7 @@ from config import (
 )
 from database import (
     init_db, get_companies_filtered, get_company_by_domain, get_dashboard, domain_exists,
+    get_queries,
 )
 from collector import search_google
 from idea_generator import generate_ideas
@@ -158,10 +159,15 @@ async def api_dashboard():
     return get_dashboard()
 
 
+@app.get("/api/queries")
+async def api_queries():
+    return {"folders": get_queries()}
+
+
 @app.get("/api/companies")
 async def api_companies(
     q: str = "", auth: int = 0, bb: int = 0, nobb: int = 0, rich: int = 0,
-    hot: int = 0, email: int = 0, tg: int = 0,
+    hot: int = 0, email: int = 0, tg: int = 0, days: int = 0,
     sort: str = "surface_score", order: str = "desc",
 ):
     rows = get_companies_filtered(
@@ -169,7 +175,7 @@ async def api_companies(
         require_auth=bool(auth), require_bb=bool(bb), exclude_bb=bool(nobb),
         min_payout=7 if rich else 0,
         min_hotness=HOTNESS_HOT_THRESHOLD if hot else 0,
-        has_email=bool(email), has_telegram=bool(tg),
+        has_email=bool(email), has_telegram=bool(tg), days=days,
     )
     numeric = {"surface_score", "payout_score", "quality_score", "hotness_score", "backend_score", "times_seen"}
     keyf = (lambda r: r.get(sort) or 0) if sort in numeric else (lambda r: str(r.get(sort) or "").lower())
@@ -227,13 +233,13 @@ async def api_cancel(jid: str):
 @app.get("/api/export")
 async def api_export(
     q: str = "", auth: int = 0, bb: int = 0, nobb: int = 0, rich: int = 0,
-    hot: int = 0, email: int = 0, tg: int = 0,
+    hot: int = 0, email: int = 0, tg: int = 0, days: int = 0,
 ):
     rows = get_companies_filtered(
         query=q or None, require_auth=bool(auth), require_bb=bool(bb),
         exclude_bb=bool(nobb), min_payout=7 if rich else 0,
         min_hotness=HOTNESS_HOT_THRESHOLD if hot else 0,
-        has_email=bool(email), has_telegram=bool(tg),
+        has_email=bool(email), has_telegram=bool(tg), days=days,
     )
     fd, path = tempfile.mkstemp(suffix=".xlsx")
     os.close(fd)
